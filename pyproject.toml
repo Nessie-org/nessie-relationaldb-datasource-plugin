@@ -65,8 +65,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=src/nessie_relationaldb_datasource_plugin --cov-report=term-missing"
-
 [tool.coverage.run]
 source = ["src/nessie_relationaldb_datasource_plugin"]
 
