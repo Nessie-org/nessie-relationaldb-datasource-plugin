@@ -111,7 +111,8 @@ def _parse(db_path: str, graph_type: GraphType = GraphType.DIRECTED) -> Graph:
 
 def load_graph(action: Action, context: Context) -> Graph:
     db_path: str = action.payload["Database Path"]
-    graph_type: GraphType = action.payload.get("graph_type", GraphType.DIRECTED)
+    is_directed = action.payload.get("Is Directed", False)
+    graph_type: GraphType = GraphType.DIRECTED if is_directed else GraphType.UNDIRECTED
     return _parse(db_path, graph_type)
 
 
@@ -123,6 +124,7 @@ def relational_db_plugin() -> Any:
     requires = []
     setup_requires = {
         "Database Path": SetupRequirementType.FILE,
+        "Is Directed": SetupRequirementType.BOOLEAN,
     }
     ret_dict = {
         "handlers":      handlers,
