@@ -254,7 +254,7 @@ if __name__ == "__main__":
     p = relational_db_plugin()
     graph = p.handle(Action("load_graph", {
         "Database Path": DB_PATH,
-        "graph_type": GraphType.DIRECTED,
+        "Is Directed": True,
     }), None)
 
     print(f"\n{graph}")
