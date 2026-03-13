@@ -1,6 +1,7 @@
 import sqlite3
 from typing import Any
-from nessie_api.models import Graph, GraphType, Node, Edge, Attribute, Action, plugin
+from nessie_api.models import Graph, GraphType, Node, Edge, Attribute, Action, plugin, SetupRequirementType
+from nessie_api.protocols import Context
 
 
 def _coerce(value: Any) -> Any:
@@ -15,38 +16,42 @@ def _connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def _parse(action: Action) -> Graph:
-    """
-    payload: {
-        "db_path": str,
-        "graph_type": GraphType (optional, default DIRECTED),
-        "node_tables": list[str],
-        "edge_tables": list[
-            {
-                "from_table": str,
-                "from_col": str,
-                "to_table": str,
-                "to_col": str,
-                "edge_id_col": str (optional)
-            }
-        ]
-    }
-    """
-    conn = _connect(action.payload["db_path"])
-    graph_type: GraphType = action.payload.get("graph_type", GraphType.DIRECTED)
-    node_tables: list[str] = action.payload["node_tables"]
-    edge_definitions: list[dict] = action.payload.get("edge_tables", [])
+def _get_tables(cursor: sqlite3.Cursor) -> list[str]:
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    return [row[0] for row in cursor.fetchall()]
 
-    graph = Graph(graph_type)
+
+def _get_foreign_keys(cursor: sqlite3.Cursor, table: str) -> list[dict]:
+    """
+    Returns list of FK dicts:
+    { from_col, to_table, to_col }
+    """
+    cursor.execute(f"PRAGMA foreign_key_list({table})")
+    fks = []
+    for row in cursor.fetchall():
+        fks.append({
+            "from_col": row["from"],
+            "to_table": row["table"],
+            "to_col":   row["to"],
+        })
+    return fks
+
+
+def _parse(db_path: str, graph_type: GraphType = GraphType.DIRECTED) -> Graph:
+    conn = _connect(db_path)
     cursor = conn.cursor()
+    graph = Graph(db_path, graph_type)
 
-    for table in node_tables:
+    tables = _get_tables(cursor)
+
+    for table in tables:
         cursor.execute(f"SELECT * FROM {table}")
         rows = cursor.fetchall()
         cols = [desc[0] for desc in cursor.description]
 
         for row in rows:
-            node_id = f"{table}_{row[cols[0]]}"
+            pk_val = row[cols[0]]
+            node_id = f"{table}_{pk_val}"
             node = Node(node_id)
 
             for col in cols:
@@ -57,56 +62,69 @@ def _parse(action: Action) -> Graph:
             node.add_attribute(Attribute("_table", table))
             graph.add_node(node)
 
-    for i, edge_def in enumerate(edge_definitions):
-        from_table = edge_def["from_table"]
-        from_col = edge_def["from_col"]
-        to_table = edge_def["to_table"]
-        to_col = edge_def["to_col"]
-        edge_id_col = edge_def.get("edge_id_col")
+    edge_counter = 0
+    for table in tables:
+        fks = _get_foreign_keys(cursor, table)
 
-        # without data, just for col names
-        cursor.execute(f"SELECT * FROM {from_table} LIMIT 0")
+        if not fks:
+            continue
+
+        cursor.execute(f"SELECT * FROM {table} LIMIT 0")
         from_cols = [desc[0] for desc in cursor.description]
+        select_cols = ", ".join(f'"{table}"."{c}" AS "{c}"' for c in from_cols)
 
-        select_cols = ", ".join(f"{from_table}.{c} AS {c}" for c in from_cols)
+        for fk in fks:
+            from_col = fk["from_col"]
+            to_table = fk["to_table"]
+            to_col = fk["to_col"]
+            to_alias = f"__{to_table}"
 
-        # for disambiguating PK col of target table in case it's also present in source table
-        to_alias = f"__{to_table}"
+            cursor.execute(f"""
+                SELECT {select_cols}, "{to_alias}"."{to_col}" AS _target_pk
+                FROM "{table}"
+                JOIN "{to_table}" AS "{to_alias}"
+                  ON "{table}"."{from_col}" = "{to_alias}"."{to_col}"
+            """)
 
-        cursor.execute(f"""
-            SELECT {select_cols}, {to_alias}.{to_col} AS _target_pk
-            FROM {from_table}
-            JOIN {to_table} AS {to_alias} ON {from_table}.{from_col} = {to_alias}.{to_col}
-        """)
+            rows = cursor.fetchall()
+            cols = [desc[0] for desc in cursor.description]
 
-        rows = cursor.fetchall()
-        cols = [desc[0] for desc in cursor.description]
+            for row in rows:
+                source_node = graph.get_node(f"{table}_{row[cols[0]]}")
+                target_node = graph.get_node(f"{to_table}_{row['_target_pk']}")
 
-        for j, row in enumerate(rows):
-            source_node = graph.get_node(f"{from_table}_{row[cols[0]]}")
-            target_node = graph.get_node(f"{to_table}_{row['_target_pk']}")
+                if source_node is None or target_node is None:
+                    continue
 
-            if source_node is None or target_node is None:
-                continue
+                edge_id = f"edge_{table}_{to_table}_{edge_counter}"
+                edge_counter += 1
 
-            edge_id = (
-                f"{from_table}_{row[edge_id_col]}"
-                if edge_id_col
-                else f"edge_{from_table}_{to_table}_{i}_{j}"
-            )
-
-            edge = Edge(edge_id, source_node, target_node)
-            edge.add_attribute(Attribute("_relation", f"{from_table}.{from_col} -> {to_table}.{to_col}"))
-            graph.add_edge(edge)
+                edge = Edge(edge_id, source_node, target_node)
+                edge.add_attribute(Attribute("_relation", f"{table}.{from_col} -> {to_table}.{to_col}"))
+                graph.add_edge(edge)
 
     conn.close()
     return graph
 
 
-@plugin(name="relational_db_parser")
+def load_graph(action: Action, context: Context) -> Graph:
+    db_path: str = action.payload["db_path"]
+    graph_type: GraphType = action.payload.get("graph_type", GraphType.DIRECTED)
+    return _parse(db_path, graph_type)
+
+
+@plugin(name="SQLite Relational DB")
 def relational_db_plugin() -> Any:
     handlers = {
-        "db.parse": _parse,
+        "load_graph": load_graph,
     }
     requires = []
-    return handlers, requires
+    setup_requires = {
+        "Database Path": SetupRequirementType.FILE,
+    }
+    ret_dict = {
+        "handlers":      handlers,
+        "requires":      requires,
+        "setup_requires": setup_requires,
+    }
+    return ret_dict
