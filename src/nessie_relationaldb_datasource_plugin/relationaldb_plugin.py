@@ -108,7 +108,7 @@ def _parse(db_path: str, graph_type: GraphType = GraphType.DIRECTED) -> Graph:
 
 
 def load_graph(action: Action, context: Context) -> Graph:
-    db_path: str = action.payload["db_path"]
+    db_path: str = action.payload["Database Path"]
     graph_type: GraphType = action.payload.get("graph_type", GraphType.DIRECTED)
     return _parse(db_path, graph_type)
 
