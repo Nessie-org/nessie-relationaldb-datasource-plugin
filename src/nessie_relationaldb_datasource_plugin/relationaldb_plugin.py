@@ -191,7 +191,7 @@ def relational_db_plugin() -> Any:
     requires = []
 
     setup_requires = {
-        "Database Path": SetupRequirementType.FILE,
+        "Database Path": SetupRequirementType.STRING,
         "Is Directed": SetupRequirementType.BOOLEAN,
     }
 
