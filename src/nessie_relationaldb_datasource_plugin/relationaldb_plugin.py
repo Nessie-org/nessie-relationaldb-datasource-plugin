@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Any
+from pathlib import Path
 from nessie_api.models import Graph, GraphType, Node, Edge, Attribute, Action, plugin, SetupRequirementType
 from nessie_api.protocols import Context
 
@@ -40,7 +41,8 @@ def _get_foreign_keys(cursor: sqlite3.Cursor, table: str) -> list[dict]:
 def _parse(db_path: str, graph_type: GraphType = GraphType.DIRECTED) -> Graph:
     conn = _connect(db_path)
     cursor = conn.cursor()
-    graph = Graph(db_path, graph_type)
+    graph_name = Path(db_path).stem
+    graph = Graph(graph_name, graph_type)
 
     tables = _get_tables(cursor)
 
