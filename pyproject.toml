@@ -7,7 +7,6 @@ name = "nessie-relationaldb-datasource-plugin"
 version = "0.1.0"
 description = "Nessie RelationalDb Data Source Plugin - A Python package loading graph from relational databases"
 readme = "README.md"
-license = { text = "Apache-2.0" }
 requires-python = ">=3.9"
 authors = [
     { name = "Stefan Ilić", email = "stefanilic3001@gmail.com" },
@@ -26,17 +25,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "nessie_api>=0.1.0",
+    "nessie-api>=0.1.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-]
+[project.entry-points."nessie_plugins"]
+nessie_relationaldb_datasource_plugin = "nessie_relationaldb_datasource_plugin:relational_db_plugin"
 
 [project.urls]
 Homepage = "https://github.com/Nessie-org/nessie-relationaldb-datasource-plugin"
@@ -56,24 +49,8 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = []
 
 [tool.mypy]
 python_version = "3.9"
 strict = true
 ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=src/nessie_relationaldb_datasource_plugin --cov-report=term-missing"
-
-[tool.coverage.run]
-source = ["src/nessie_relationaldb_datasource_plugin"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if TYPE_CHECKING:",
-    "raise NotImplementedError",
-]
