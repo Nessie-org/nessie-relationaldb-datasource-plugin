@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.entry-points."nessie_plugins"]
-nessie_npm_dependencies_plugin = "nessie_relationaldb_datasource_plugin:relationaldb_datasource_plugin"
+nessie_relationaldb_datasource_plugin = "nessie_relationaldb_datasource_plugin:relational_db_plugin"
 
 [project.urls]
 Homepage = "https://github.com/Nessie-org/nessie-relationaldb-datasource-plugin"
